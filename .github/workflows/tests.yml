@@ -1,0 +1,84 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: ${{ matrix.os }} / py${{ matrix.python-version }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ["3.9", "3.12", "3.13"]
+        exclude:
+          # 保持矩阵规模合理：非 Linux 只跑最新版
+          - os: windows-latest
+            python-version: "3.9"
+          - os: macos-latest
+            python-version: "3.9"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run unit tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Verify CLI is wired up
+        run: |
+          python vision_provider.py --list-providers
+          python vision_provider.py --help
+
+  no-secrets:
+    name: ensure no credentials are committed
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Scan for credential-looking strings
+        run: |
+          set -e
+          echo "Scanning for real-looking API keys..."
+
+          # 允许测试里刻意写死的假样本
+          ALLOW='FAKEKEYFORTESTONLY|sk-0123456789abcdef|sk-abc123def456ghi'
+
+          FOUND=$(grep -rnoE '(sk-[A-Za-z0-9]{20,}|sk-ant-[A-Za-z0-9_-]{20,}|AIza[A-Za-z0-9_-]{30,}|AQ\.[A-Za-z0-9._-]{20,})' \
+            --include='*.py' --include='*.md' --include='*.yaml' --include='*.yml' \
+            --include='*.json' --include='*.txt' . || true)
+
+          FOUND=$(echo "$FOUND" | grep -vE "$ALLOW" | grep -vE '^\s*$' || true)
+
+          if [ -n "$FOUND" ]; then
+            echo "::error::Possible credential found in repository:"
+            echo "$FOUND"
+            exit 1
+          fi
+
+          echo "OK - no credentials detected"
+
+      - name: Ensure credential files are not tracked
+        run: |
+          set -e
+          for f in .credentials.yaml credentials.yaml .env config.yaml; do
+            if git ls-files --error-unmatch "$f" >/dev/null 2>&1; then
+              echo "::error::$f must not be tracked"
+              exit 1
+            fi
+          done
+          echo "OK - no credential files tracked"

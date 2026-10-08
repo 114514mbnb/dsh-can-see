@@ -1,0 +1,50 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# ---- Virtual environments ----
+.venv/
+venv/
+env/
+ENV/
+
+# ---- Credentials & local config (never commit) ----
+.env
+.env.*
+!.env.example
+credentials.yaml
+.credentials.yaml
+config.yaml
+!config.example.yaml
+*.pem
+*.key
+
+# ---- Local wheels for offline install ----
+wheels/
+
+# ---- Test / scratch artifacts ----
+.coverage
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*_test_image.png
+_realtest.png
+_check.png
+output.json
+result.json
+
+# ---- Editors / OS ----
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
