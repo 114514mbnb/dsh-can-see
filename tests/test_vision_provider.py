@@ -662,6 +662,108 @@ class TestDescribeImage(unittest.TestCase):
                 self.assertEqual(out, "错误: boom")
 
 
+class TestConsoleEncoding(unittest.TestCase):
+    """
+    确保在非 UTF-8 控制台下不会因 print 崩溃。
+
+    背景：Windows 默认控制台代码页（cp1252 / cp936）无法编码 ✓ 或部分中文，
+    直接 print 会抛 UnicodeEncodeError 并中断程序。CI 在 windows-latest 上
+    曾因此失败，这里把该场景固化成回归测试。
+    """
+
+    def _cp1252_stream(self):
+        import io
+        raw = io.BytesIO()
+        # errors="strict" 才能复现真实控制台的行为
+        return io.TextIOWrapper(raw, encoding="cp1252", errors="strict")
+
+    def test_library_prints_survive_non_utf8_console(self):
+        """注册/注销时的提示输出必须能在 cp1252 下完成"""
+        import contextlib
+
+        stream = self._cp1252_stream()
+        try:
+            with contextlib.redirect_stdout(stream):
+                VisionProvider.register_custom_provider(
+                    name="enc_test",
+                    base_url="http://localhost:1234/v1",
+                    default_model="m",
+                )
+                self.assertIn("enc_test", VisionProvider.list_custom_providers())
+                VisionProvider.unregister_custom_provider("enc_test")
+                # 警告分支也要覆盖
+                VisionProvider.unregister_custom_provider("does_not_exist")
+            stream.flush()
+        finally:
+            try:
+                stream.detach()
+            except Exception:
+                pass
+
+    def test_ensure_utf8_output_is_safe_on_odd_streams(self):
+        """_ensure_utf8_output 遇到不可 reconfigure 的对象必须静默跳过"""
+        import io
+        import contextlib
+        from vision_provider import _ensure_utf8_output
+
+        class NoReconfigure:
+            encoding = "cp1252"
+            def write(self, *_a, **_k): pass
+            def flush(self): pass
+
+        with contextlib.redirect_stdout(NoReconfigure()):
+            with contextlib.redirect_stderr(NoReconfigure()):
+                # 不应抛异常
+                _ensure_utf8_output()
+
+    def test_ensure_utf8_output_upgrades_piped_stream(self):
+        """管道/重定向场景下应能把编码切到 UTF-8"""
+        import io
+        import contextlib
+        from vision_provider import _ensure_utf8_output
+
+        raw = io.BytesIO()
+        stream = io.TextIOWrapper(raw, encoding="cp1252", errors="strict")
+        try:
+            with contextlib.redirect_stdout(stream):
+                _ensure_utf8_output()
+                # 切换后应能正常输出中文
+                print("中文输出")
+            stream.flush()
+            self.assertIn("中文".encode("utf-8"), raw.getvalue())
+        finally:
+            try:
+                stream.detach()
+            except Exception:
+                pass
+
+    def test_source_has_no_non_ascii_in_library_prints(self):
+        """
+        库内部的状态提示必须是纯 ASCII。
+
+        这些 print 可能在用户代码里被调用，无法依赖 CLI 的 UTF-8 重配置，
+        所以必须自身编码安全。
+        """
+        import re
+        from pathlib import Path as _P
+
+        src = (_P(__file__).resolve().parent.parent / "vision_provider.py").read_text(
+            encoding="utf-8"
+        )
+        # 找出库实现部分（main() 之前）的 print 语句
+        lib_part = src.split("def main(", 1)[0]
+        offenders = []
+        for line in lib_part.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("print("):
+                if any(ord(ch) > 127 for ch in stripped):
+                    offenders.append(stripped)
+        self.assertEqual(
+            offenders, [],
+            f"库内 print 含非 ASCII 字符，会在非 UTF-8 控制台下崩溃: {offenders}",
+        )
+
+
 def run_tests():
     """运行所有测试"""
     unittest.main(argv=[''], verbosity=2, exit=False)

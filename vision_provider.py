@@ -14,6 +14,7 @@ dsh-can-see — give text-only models in DSH the ability to see images.
 """
 
 import os
+import sys
 import base64
 import json
 from typing import List, Dict, Optional, Union, Any
@@ -23,14 +24,36 @@ import mimetypes
 try:
     import requests
 except ImportError:
-    print("请安装 requests: pip install requests")
+    print("Missing dependency 'requests'. Install it with: pip install requests")
     raise
 
 try:
     from PIL import Image
 except ImportError:
-    print("请安装 Pillow: pip install pillow")
+    print("Missing dependency 'Pillow'. Install it with: pip install pillow")
     raise
+
+
+def _ensure_utf8_output() -> None:
+    """
+    Switch stdout/stderr to UTF-8.
+
+    Windows consoles default to a legacy code page (cp1252, cp936, ...) that
+    cannot encode characters like the check mark or many CJK glyphs. Plain
+    print() then raises UnicodeEncodeError and aborts the program mid-output.
+
+    Reconfiguring to UTF-8 makes the worst case render as mojibake instead of
+    crashing. Available on Python 3.7+; silently ignored when a stream does not
+    support it (redirected or wrapped streams).
+    """
+    for name in ("stdout", "stderr"):
+        stream = getattr(sys, name, None)
+        if stream is None:
+            continue
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
 
 
 # ---------------------------------------------------------------------------
@@ -213,7 +236,7 @@ class VisionProvider:
             "headers": headers or {},
             **kwargs
         }
-        print(f"✓ 已注册自定义提供商: {name}")
+        print(f"[ok] registered custom provider: {name}")
     
     @classmethod
     def list_custom_providers(cls) -> List[str]:
@@ -225,9 +248,9 @@ class VisionProvider:
         """注销自定义提供商"""
         if name in cls._custom_providers:
             del cls._custom_providers[name]
-            print(f"✓ 已注销自定义提供商: {name}")
+            print(f"[ok] unregistered custom provider: {name}")
         else:
-            print(f"⚠ 未找到自定义提供商: {name}")
+            print(f"[warn] no such custom provider: {name}")
     
     def _get_api_key_for_custom(self, provider_name: str) -> Optional[str]:
         """为自定义提供商获取 API key"""
@@ -722,7 +745,7 @@ class VisionProvider:
         try:
             import yaml
         except ImportError:
-            print("请安装 PyYAML: pip install pyyaml")
+            print("Missing dependency 'PyYAML'. Install it with: pip install pyyaml")
             raise
         
         with open(config_path) as f:
@@ -778,7 +801,9 @@ def describe_image(
 def main():
     """命令行接口"""
     import argparse
-    import sys
+
+    # Windows 控制台默认代码页无法编码中文/符号，先切到 UTF-8 再输出
+    _ensure_utf8_output()
 
     # 允许 CLI 使用「内置提供商 + 已注册的自定义提供商」
     known = VisionProvider.SUPPORTED_PROVIDERS + VisionProvider.list_custom_providers()
