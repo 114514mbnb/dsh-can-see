@@ -2,6 +2,10 @@
 
 **让部署在 DSH 里的纯文本模型（GPT、Claude 等）能够看到图片。**
 
+[![tests](https://github.com/114514mbnb/dsh-can-see/actions/workflows/tests.yml/badge.svg)](https://github.com/114514mbnb/dsh-can-see/actions/workflows/tests.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.9%20%7C%203.12%20%7C%203.13-blue.svg)](https://www.python.org/)
+
 [English](README.md) · 简体中文
 
 ---
